@@ -1,36 +1,9 @@
-from collections import Counter
+from mido import Message, bpm2tempo
 import re
-from mido import Message, MidiFile, MidiTrack, MetaMessage, bpm2tempo
-import pypianoroll
-import matplotlib.pyplot as plt
-import numpy as np
 import logging
-
-const = 15000
-BPM = 90
-PPQ = int(const/BPM)
-beatspermeasure = 4  # beats per measure
-# PPQ = 163
-mid = MidiFile(ticks_per_beat=PPQ)
-track = MidiTrack()
-mid.tracks.append(track)
-
-# TODO:
-# Achteldurchgänge ( über listen pro Zeitschritt)
-# Ranges für Voices definieren und bewegung in Mittelstimmen gering halten, jedoch zwischen äußeren Stimmen.
-
-range_soprano = ['C5', 'A6']
-range_alt = ['F4', 'D6']
-range_tenor = ['B3', 'G5']
-range_bass = ['E3', 'C5']
-
-notedict = {}
-tonality = 'F-Major'
-# melody = [['F5', 0, 0.25], ['A5', 0.25, 0.25], ['Bb5', 0.5, 0.25], ['C6', 0.75, 0.25], [
-# 'C6', 1, 0.25], ['D6', 1.25, 0.25], ['E6', 1.5, 0.25], ['F6', 1.75, 0.25]]
-melody = [['A5', 0, 0.25], ['F5', 0.25, 0.25], ['A5', 0.5, 0.25], ['A5', 0.75, 0.25], [
-    'Bb5', 1, 0.25], ['D6', 1.25, 0.25], ['Bb5', 1.5, 0.25], ['A5', 1.75, 0.25]]
-
+from mido import MidiFile, MidiTrack, MetaMessage, bpm2tempo
+import abjad_wrapper
+from classes import tone
 functiondict = {'1': 'T', '2': 'D', '3': 'T',
                 '4': 'S', '5': 'T/D', '6': 'S', '7': 'D'}
 
@@ -53,14 +26,7 @@ step_to_note_sharps = {0: 'C', 1: 'C#', 2: 'D', 3: 'D#', 4: 'E', 5:  'F',
 step_to_note_flats = {0: 'C', 1: 'Db', 2: 'D', 3: 'Eb', 4: 'E', 5:  'F',
                       6: 'Gb', 7: 'G', 8: 'Ab', 9: 'A', 10: 'Bb', 11: 'Cb'}
 
-
-track.append(MetaMessage('key_signature', key='F', time=0))
-track.append(MetaMessage('time_signature', numerator=4,
-             denominator=4, clocks_per_click=200))
-track.append(MetaMessage('set_tempo', tempo=bpm2tempo(BPM)))
-
-
-def convert_notedict(notes):
+def convert_notedict(notes, track):
     deltatime = 0
     for time in sorted(notes):
         note_appended = False
@@ -86,9 +52,9 @@ def convert_notedict(notes):
 
 
 def note_to_pitch(note_string):
-    tone = re.findall('[A-Z]b?#?', note_string)[0]
+    tone_str = re.findall('[A-Z]b?#?', note_string)[0]
     octave = int(re.findall('\d+', note_string)[0])
-    return letter_to_note[tone] + octave * 12
+    return letter_to_note[tone_str] + octave * 12
 
 
 def scalestep_to_note(step, tonality, baseoctave):
@@ -105,41 +71,69 @@ def scalestep_to_note(step, tonality, baseoctave):
     else:
         return letter + str(baseoctave)
 
+class track():
+    def __init__(self, BPM):
+        self.BPM=BPM
+        self.notedict = {}
+    def addnote(self, note, start_val, duration_val, veloticy_param=100):
+        '''midi write wrapper'''
+        duration = int(60000/(self.BPM) * duration_val)
+        start = int(60000/(self.BPM) * start_val)
+        if isinstance(note, str):
+            pitch = note_to_pitch(note)
+        elif not isinstance(note, int):
+            pitch = int(note)
+        else:
+            pitch = note
+        if start not in self.notedict.keys():
+            self.notedict[start] = [{'event': 'note_on',
+                                'pitch': pitch, 'velocity': veloticy_param}]
+        else:
+            self.notedict[start].append({'event': 'note_on',
+                                    'pitch': pitch, 'velocity': veloticy_param})
+        if start + duration not in self.notedict.keys():
+            self.notedict[start + duration] = [{'event': 'note_off',
+                                        'pitch': pitch, 'velocity': veloticy_param}]
+        else:
+            self.notedict[start + duration].append({'event': 'note_off',
+                                            'pitch': pitch, 'velocity': veloticy_param})
 
-def addnote(note, start_val, duration_val, veloticy_param=100):
-    duration = int(60000/(BPM) * duration_val)
-    start = int(60000/(BPM) * start_val)
-    if isinstance(note, str):
-        pitch = note_to_pitch(note)
-    elif not isinstance(note, int):
-        pitch = int(note)
-    else:
-        pitch = note
-    if start not in notedict.keys():
-        notedict[start] = [{'event': 'note_on',
-                            'pitch': pitch, 'velocity': veloticy_param}]
-    else:
-        notedict[start].append({'event': 'note_on',
-                                'pitch': pitch, 'velocity': veloticy_param})
-    if start + duration not in notedict.keys():
-        notedict[start + duration] = [{'event': 'note_off',
-                                       'pitch': pitch, 'velocity': veloticy_param}]
-    else:
-        notedict[start + duration].append({'event': 'note_off',
-                                           'pitch': pitch, 'velocity': veloticy_param})
+    def unrolltimestep(self, timestep, start, duration):
+        if not isinstance(timestep, list):
+            pitch = note_to_pitch(timestep)
+            self.addnote(pitch, start, duration)
+        else:
+            for i, step in enumerate(timestep):
+                subedevide_start = start + duration/len(timestep)*i
+                duration_devided = duration/len(timestep)
+                self.unrolltimestep(step, subedevide_start, duration_devided)
+
+    def write_voices_to_midi(self, melody, altline, tenorline, bassline):
+        starttime = 0
+        for i, note in enumerate(bassline):
+            self.unrolltimestep(note, starttime, 1/melody[i].duration)
+            starttime = starttime + 1/melody[i].duration
+        starttime = 0
+        for i, note in enumerate(altline):
+            self.unrolltimestep(note, starttime, 1/melody[i].duration)
+            starttime = starttime + 1/melody[i].duration
+        starttime = 0
+        for i, note in enumerate(tenorline):
+            self.unrolltimestep(note, starttime, 1/melody[i].duration)
+            starttime = starttime + 1/melody[i].duration
 
 
-def getscaledegree(tone, tonality):
+def getscaledegree(tone_str, tonality):
     basetone = re.findall('(.?(?=-.*))', tonality)[0] + '0'
     basepitch = note_to_pitch(basetone)
-    relative_pitch = (note_to_pitch(tone) - basepitch) % 12
+    relative_pitch = (note_to_pitch(tone_str) - basepitch) % 12
     return scale_major_tone_to_step[relative_pitch]
 
 
 def get_notes_of_melody(melody):
     steplist = []
-    for tone in melody:
-        steplist.append(tone[0])
+    for tone_str in melody:
+        steplist.append(tone_str.pitch)
     return steplist
 
 
@@ -147,12 +141,16 @@ def getchords(scalesteps, tonality):
     chordlist = []
     for note in scalesteps:
         chordlist.append(functiondict[getscaledegree(note, tonality)])
-    for i in range(len(chordlist)-1, 0, -1):
-        if chordlist[i] == 'T/D':
-            if chordlist[i+1] == 'S':
-                chordlist[i] = 'T'
-            if chordlist[i+1] == 'T' and chordlist[i-1] != 'D':
-                chordlist[i] = 'D'
+    for i in range(len(chordlist), 0, -1):
+        if chordlist[i-1] == 'T/D':
+            if chordlist[i] == 'S':
+                chordlist[i-1] = 'T'
+            elif chordlist[i] == 'T' and chordlist[i-1] != 'D':
+                chordlist[i-1] = 'D'
+            else:
+                chordlist[i-1] = 'T'
+                print("new debugger is weird")
+
     return chordlist
 
 
@@ -160,16 +158,16 @@ def correct_octaves(line):
     for i in range(1, len(line), 1):
         pitch_diff = note_to_pitch(line[i]) - note_to_pitch(line[i-1])
         octave = re.findall('\d', line[i])[0]
-        tone = line[i].replace(octave, '')
+        tone_str = line[i].replace(octave, '')
         if line[i] == line[i-1]:
-            if abs(note_to_pitch(line[i]) - note_to_pitch(line[i+1])) > abs(note_to_pitch(tone + str(int(octave)+1)) - note_to_pitch(line[i+1])):
-                line[i] = tone + str(int(octave)+1)
-            elif abs(note_to_pitch(line[i]) - note_to_pitch(line[i+1])) > abs(note_to_pitch(tone + str(int(octave)-1)) - note_to_pitch(line[i+1])):
-                line[i] = tone + str(int(octave)-1)
-        elif pitch_diff > 12:
-            line[i] = tone + str(int(octave)-1)
-        elif pitch_diff < -12:
-            line[i] = tone + str(int(octave)+1)
+            if abs(note_to_pitch(line[i]) - note_to_pitch(line[i+1])) > abs(note_to_pitch(tone_str + str(int(octave)+1)) - note_to_pitch(line[i+1])):
+                line[i] = tone_str + str(int(octave)+1)
+            elif abs(note_to_pitch(line[i]) - note_to_pitch(line[i+1])) > abs(note_to_pitch(tone_str + str(int(octave)-1)) - note_to_pitch(line[i+1])):
+                line[i] = tone_str + str(int(octave)-1)
+        elif pitch_diff > 10:
+            line[i] = tone_str + str(int(octave)-1)
+        elif pitch_diff < -10:
+            line[i] = tone_str + str(int(octave)+1)
     return line
 
 
@@ -177,12 +175,19 @@ def composebass(soprano_line, chords, tonality):
     bassline = []
     if len(soprano_line) != len(chords):
         return "Error"
-    for i, tone in enumerate(soprano_line):
-        note = getscaledegree(tone, tonality)
-        if note == '1' or note == '3':
+    for i, tone_str in enumerate(soprano_line):
+        note = getscaledegree(tone_str, tonality)
+        if i ==0:
             bassline.append('1')
+            continue
+        elif note == '1' and chords[i] == 'T':
+            bassline.append('3')
+        elif note == '1' and chords[i] == 'S':
+            bassline.append('6')
         elif note == '2':
             bassline.append('7')
+        elif note == '3':
+            bassline.append('1')
         elif note == '4':
             bassline.append('6')
         elif note == '5' and chords[i] == 'T':
@@ -193,32 +198,10 @@ def composebass(soprano_line, chords, tonality):
             bassline.append('4')
         elif note == '7':
             bassline.append('2')
-    for i, tone in enumerate(bassline):
-        bassline[i] = scalestep_to_note(tone, tonality, 3)
+    for i, tone_str in enumerate(bassline):
+        bassline[i] = scalestep_to_note(tone_str, tonality, 3)
     bassline = correct_octaves(bassline)
     return bassline
-
-
-def unrolltimestep(timestep, start, duration):
-    if len(timestep) == 1:
-        pitch = note_to_pitch(timestep[0])
-        addnote(pitch, start, duration)
-    else:
-        for i, step in enumerate(timestep):
-            subedevide_start = start + duration/len(timestep)*i
-            duration_devided = duration/len(timestep)
-            unrolltimestep(step, subedevide_start, duration_devided)
-
-
-def write_voices_to_midi(melody, altline, tenorline, bassline):
-
-    for i, note in enumerate(bassline):
-        unrolltimestep(note, melody[i][1], melody[i][2])
-    for i, note in enumerate(altline):
-        unrolltimestep(note, melody[i][1], melody[i][2])
-    for i, note in enumerate(tenorline):
-        unrolltimestep(note, melody[i][1], melody[i][2])
-
 
 def check_for_conflicts(melody_line, altline, tenorline, bassline):
     ziptuples = zip(melody_line, altline, tenorline, bassline)
@@ -249,8 +232,8 @@ def find_tones_between(tone_look, lower_limit, upper_limit, octave_lower, octave
         if notepitch >= lower_limit and notepitch <= upper_limit:
             options.append(scalestep_to_note(tone_look, tonality, i))
     if len(options) > 1:
-        for i, tone in enumerate(options):
-            if tone == bass_tone or tone == soprano_tone:
+        for i, tone_str in enumerate(options):
+            if tone_str == bass_tone or tone_str == soprano_tone:
                 options.pop(i)
     return options
 
@@ -265,6 +248,37 @@ def gettoneoptions(soprano_tone, bass_tone, tones, tonality):
     tone2options = find_tones_between(
         tones[1], lower_limit, upper_limit, octave_lower, octave_upper, bass_tone, soprano_tone, tonality)
     return tone1options, tone2options
+
+
+def get_initial_tones(tone1options, tone2options, soprano_tone, bass_tone, tonality):
+    pitch_diff = note_to_pitch(soprano_tone) - note_to_pitch(bass_tone)
+    if pitch_diff > 24:
+        spread = True
+    else: 
+        spread = False
+    soprano_degree = getscaledegree(soprano_tone, tonality)
+    pitch_sort_dict = {}
+    total_options = tone1options + tone2options
+    for tone in total_options:
+        pitch_sort_dict[note_to_pitch(tone)] = tone
+    sorted_dict = sorted(pitch_sort_dict, reverse=True)
+    if spread == True:
+        alt_tone = pitch_sort_dict[sorted_dict[1]]
+    else:
+        alt_tone = pitch_sort_dict[sorted_dict[0]]
+    if alt_tone in tone1options:
+        for tone in tone1options:
+             pitch_sort_dict.pop(note_to_pitch(tone), None)
+    else:
+        for tone in tone2options:
+            pitch_sort_dict.pop(note_to_pitch(tone), None)
+    sorted_dict = sorted(pitch_sort_dict, reverse=True)
+    if spread == True:    
+        ten_tone = pitch_sort_dict[sorted_dict[1]]
+    else:
+        ten_tone = pitch_sort_dict[sorted_dict[0]]
+    return alt_tone, ten_tone
+
 
 
 def compose_middlevoicings(soprano_line, bassline, chords, tonality):
@@ -286,13 +300,14 @@ def compose_middlevoicings(soprano_line, bassline, chords, tonality):
                                 )
     for i, tones in enumerate(missingharmonies):
         if i == 0:
-            tone1 = scalestep_to_note(tones[1], tonality, 3)
-            tone2 = scalestep_to_note(tones[0], tonality, 4)
-            altline.append(tone2)
-            tenorline.append(tone1)
+            tone1options, tone2options = gettoneoptions(
+                soprano_line[0], bassline[0], tones, tonality)
+            tone1, tone2 = get_initial_tones(tone1options, tone2options, soprano_line[0], bassline[0], tonality)
+            altline.append(tone1)
+            tenorline.append(tone2)
         else:
-            if i == 3:
-                print('debug')
+                # if i == 3:
+                #     print('debug')
             tone1options, tone2options = gettoneoptions(
                 soprano_line[i], bassline[i], tones, tonality)
             samelen = len(tone1options) == 1 and len(tone2options) == 1
@@ -309,16 +324,16 @@ def compose_middlevoicings(soprano_line, bassline, chords, tonality):
                 tenorline.append(tone1options[0])
             else:
                 # case priority 2: one voice can keep same tone, other one doesn't cross
-                alt_in_line = altline[i-1] in tone1options + tone2options
+                alt_in_line = altline[-1] in tone1options + tone2options
                 if alt_in_line:
-                    option1try = altline[i-1]
+                    option1try = altline[-1]
                     for option in tone2options:
                         if note_to_pitch(option) < note_to_pitch(option1try):
                             altline.append(option1try)
                             tenorline.append(option)
                             break
-                elif tenorline[i-1] in tone1options + tone2options and not alt_in_line:
-                    option1try = tenorline[i-1]
+                elif tenorline[-1] in tone1options + tone2options and not alt_in_line:
+                    option1try = tenorline[-1]
                     for option in tone2options:
                         if note_to_pitch(option) > note_to_pitch(option1try):
                             altline.append(option)
@@ -329,25 +344,6 @@ def compose_middlevoicings(soprano_line, bassline, chords, tonality):
 
     check_for_conflicts(soprano_line, altline, tenorline, bassline)
     return altline, tenorline
-
-
-for note in melody:
-    addnote(note[0], note[1], note[2])
-
-
-soprano_line = get_notes_of_melody(melody)
-chords = getchords(soprano_line, tonality)
-
-bassline = composebass(soprano_line, chords, tonality)
-
-altline, tenorline = compose_middlevoicings(
-    soprano_line, bassline, chords, tonality)
-
-
-def elementstolist(array):
-    array = [[x] if not isinstance(x, list) else x for x in array]
-    return array
-
 
 def simpleornaments(array, tonality):
     for i in range(1, len(array), 1):
@@ -360,28 +356,67 @@ def simpleornaments(array, tonality):
                 octave = octave2
             else:
                 octave = octave1
-            array[i-1] = [[array[i-1]],
-                          [str(scalestep_to_note(str(int((step2 + step1)/2)), tonality, octave-1))]]
+            array[i-1] = [array[i-1], str(scalestep_to_note(str(int((step2 + step1)/2)), tonality, octave-1))]
     return array
 
+def convert_fit_to_melody(voice, melody):
+    return_voice = []
+    starttime = 0
+    for note_voice, note_melody in zip(voice, melody):
+        if isinstance(note_voice, list):
+            for note in note_voice:
+                return_voice.append(tone(note, int(note_melody.duration*len(note_voice))))
+        else:
+             return_voice.append(tone(note_voice, int(note_melody.duration))) 
+    return return_voice
 
-# scaledegrees = elementstolist(scaledegrees)
-altline = simpleornaments(altline, tonality)
-tenorline = simpleornaments(tenorline, tonality)
-bassline = simpleornaments(bassline, tonality)
+def arrangement_from_melody(melody, savename):
+    const = 15000
+    BPM = 90
+    PPQ = int(const/BPM)
+    beatspermeasure = 4  # beats per measure
+    mid = MidiFile(ticks_per_beat=PPQ)
+    midtrack = MidiTrack()
+    mid.tracks.append(midtrack)
 
-soprano_line = elementstolist(soprano_line)
-altline = elementstolist(altline)
-tenorline = elementstolist(tenorline)
-bassline = elementstolist(bassline)
+    # TODO:
+    # Ranges für Voices definieren und bewegung in Mittelstimmen gering halten, jedoch zwischen äußeren Stimmen.
+    range_soprano = ['C5', 'A6']
+    range_alt = ['F4', 'D6']
+    range_tenor = ['B3', 'G5']
+    range_bass = ['E3', 'C5']
+    newtrack = track(BPM)
+    tonality = 'F-Major'
+    midtrack.append(MetaMessage('key_signature', key='F', time=0))
+    midtrack.append(MetaMessage('time_signature', numerator=4,
+                denominator=4, clocks_per_click=200))
+    midtrack.append(MetaMessage('set_tempo', tempo=bpm2tempo(BPM)))
 
-write_voices_to_midi(melody, altline, tenorline, bassline)
-convert_notedict(notedict)
-savepath = r'I:\code\Local-Github-Repos\Autoarranger\new_song.mid'
-mid.save(savepath)
+    starttime = 0
+    for note in melody:
+        newtrack.addnote(note.pitch, starttime, 1/note.duration)
+        starttime = starttime + 1/note.duration
 
-multitrack = pypianoroll.read(savepath)
-print(multitrack)
-# multitrack.binarize()
-img = multitrack.plot()
-plt.show()
+
+    soprano_line = get_notes_of_melody(melody)
+    chords = getchords(soprano_line, tonality)
+
+    bassline = composebass(soprano_line, chords, tonality)
+
+    altline, tenorline = compose_middlevoicings(
+        soprano_line, bassline, chords, tonality)
+
+    # scaledegrees = elementstolist(scaledegrees)
+    altline = simpleornaments(altline, tonality)
+    tenorline = simpleornaments(tenorline, tonality)
+    bassline = simpleornaments(bassline, tonality)
+
+    newtrack.write_voices_to_midi(melody, altline, tenorline, bassline)
+    convert_notedict(newtrack.notedict, midtrack)
+
+    savepath = "\\".join([r"P:\Data\code\Local-Github-Repos\Autoarranger",savename + r'.mid'])
+    mid.save(savepath)
+    altline = convert_fit_to_melody(altline, melody)
+    tenorline = convert_fit_to_melody(tenorline, melody)
+    bassline = convert_fit_to_melody(bassline, melody)
+    abjad_wrapper.voices_to_staff(melody, altline, tenorline, bassline, tonality)
