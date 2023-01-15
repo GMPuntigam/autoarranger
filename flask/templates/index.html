@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dropdowns.css') }}">
+    <meta charset="UTF-8">
+    <title>Dropdown</title>
+    
+</head>
+<body>
+<form method="POST">
+    <div id='editor'>
+        <div class="svgcontainer">
+            <img src = "static\generated_svg\sample1.svg" alt="My Happy SVG" class="svg"/>
+        </div>
+        <div id="dropdowns">
+            {% for dropdown in dropdowns %}
+            <div id= "{{ dropdown.id }}">
+                <select name="{{ dropdown.id }}" onchange="this.form.submit()">
+                    {% for chord in dropdown.chords %}
+                    {% if chord == dropdown.selected %}
+                        <option selected="selected">{{ chord }}</option>"
+                    {% else %}
+                        <option>{{ chord }}</option>"
+                    {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</form>
+</body>
+</html>

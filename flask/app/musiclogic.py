@@ -1,9 +1,10 @@
 from mido import Message, bpm2tempo
 import re
+import os
 import logging
 from mido import MidiFile, MidiTrack, MetaMessage, bpm2tempo
-import abjad_wrapper
-from classes import tone
+from app.utils.classes import tone, arrangement
+
 functiondict = {'1': 'T', '2': 'D', '3': 'T',
                 '4': 'S', '5': 'T/D', '6': 'S', '7': 'D'}
 
@@ -66,10 +67,7 @@ def scalestep_to_note(step, tonality, baseoctave):
         letter = step_to_note_sharps[(scale_major[step]+basepitch) % 12]
     if tonality_base in ['F', 'Bb', 'Eb', 'Ab', 'Db,' 'Gb']:
         letter = step_to_note_flats[(scale_major[step]+basepitch) % 12]
-    if int(step) > 1:
-        return letter + str(baseoctave + 1)
-    else:
-        return letter + str(baseoctave)
+    return letter + str(baseoctave)
 
 class track():
     def __init__(self, BPM):
@@ -170,6 +168,19 @@ def correct_octaves(line):
             line[i] = tone_str + str(int(octave)+1)
     return line
 
+def correct_low_thirds(bassline, chords, tonality):
+    for i, tone_str in enumerate(bassline):
+        note = getscaledegree(tone_str, tonality)
+        if note_to_pitch(tone_str) < note_to_pitch('G3'):
+            if note == '3':
+                bassline[i] = scalestep_to_note('1', tonality, 3)
+            if note == '6': 
+                #this is wonky because of the c
+                bassline[i] = scalestep_to_note('4', tonality, 3)
+            if note == '7': 
+                bassline[i] = scalestep_to_note('5', tonality, 4)
+    return bassline
+
 
 def composebass(soprano_line, chords, tonality):
     bassline = []
@@ -201,6 +212,7 @@ def composebass(soprano_line, chords, tonality):
     for i, tone_str in enumerate(bassline):
         bassline[i] = scalestep_to_note(tone_str, tonality, 3)
     bassline = correct_octaves(bassline)
+    bassline = correct_low_thirds(bassline, chords, tonality)
     return bassline
 
 def check_for_conflicts(melody_line, altline, tenorline, bassline):
@@ -291,11 +303,7 @@ def compose_middlevoicings(soprano_line, bassline, chords, tonality):
         missingtones = list(
             set(chorddict[chord]) - set([soprano_degree, bass_degree]))
         if len(missingtones) == 1:
-            # useful?
-            if chord == 'S':
-                missingtones.append('6')
-            else:
-                missingtones.append(chorddict[chord][0])
+            missingtones.append(chorddict[chord][0])
         missingharmonies.append(missingtones
                                 )
     for i, tones in enumerate(missingharmonies):
@@ -306,8 +314,6 @@ def compose_middlevoicings(soprano_line, bassline, chords, tonality):
             altline.append(tone1)
             tenorline.append(tone2)
         else:
-                # if i == 3:
-                #     print('debug')
             tone1options, tone2options = gettoneoptions(
                 soprano_line[i], bassline[i], tones, tonality)
             samelen = len(tone1options) == 1 and len(tone2options) == 1
@@ -327,20 +333,36 @@ def compose_middlevoicings(soprano_line, bassline, chords, tonality):
                 alt_in_line = altline[-1] in tone1options + tone2options
                 if alt_in_line:
                     option1try = altline[-1]
-                    for option in tone2options:
-                        if note_to_pitch(option) < note_to_pitch(option1try):
-                            altline.append(option1try)
-                            tenorline.append(option)
-                            break
+                    if option1try in tone2options:
+                        for option in tone1options:
+                            if note_to_pitch(option) < note_to_pitch(option1try):
+                                altline.append(option1try)
+                                tenorline.append(option)
+                                break
+                    elif option1try in tone1options:
+                        for option in tone2options:
+                            if note_to_pitch(option) < note_to_pitch(option1try):
+                                altline.append(option1try)
+                                tenorline.append(option)
+                                break
                 elif tenorline[-1] in tone1options + tone2options and not alt_in_line:
                     option1try = tenorline[-1]
-                    for option in tone2options:
-                        if note_to_pitch(option) > note_to_pitch(option1try):
-                            altline.append(option)
-                            tenorline.append(option1try)
-                            break
+                    if option1try in tone2options:
+                        for option in tone1options:
+                            if note_to_pitch(option) > note_to_pitch(option1try):
+                                altline.append(option)
+                                tenorline.append(option1try)
+                                break
+                    elif option1try in tone1options:
+                        for option in tone2options:
+                            if note_to_pitch(option) > note_to_pitch(option1try):
+                                altline.append(option)
+                                tenorline.append(option1try)
+                                break
                 else:
-                    logging.warning('Not implemented tone select case')
+                    altline.append(tone1options[-1])
+                    tenorline.append(tone2options[0])
+                    logging.info('roughly inplemented tone select case')
 
     check_for_conflicts(soprano_line, altline, tenorline, bassline)
     return altline, tenorline
@@ -356,7 +378,7 @@ def simpleornaments(array, tonality):
                 octave = octave2
             else:
                 octave = octave1
-            array[i-1] = [array[i-1], str(scalestep_to_note(str(int((step2 + step1)/2)), tonality, octave-1))]
+            array[i-1] = [array[i-1], str(scalestep_to_note(str(int((step2 + step1)/2)), tonality, octave))]
     return array
 
 def convert_fit_to_melody(voice, melody):
@@ -369,6 +391,9 @@ def convert_fit_to_melody(voice, melody):
         else:
              return_voice.append(tone(note_voice, int(note_melody.duration))) 
     return return_voice
+
+
+
 
 def arrangement_from_melody(melody, savename):
     const = 15000
@@ -414,9 +439,21 @@ def arrangement_from_melody(melody, savename):
     newtrack.write_voices_to_midi(melody, altline, tenorline, bassline)
     convert_notedict(newtrack.notedict, midtrack)
 
-    savepath = "\\".join([r"P:\Data\code\Local-Github-Repos\Autoarranger",savename + r'.mid'])
+    savepath = os.path.join('flask', 'static', 'audio',savename + '.mid')
     mid.save(savepath)
     altline = convert_fit_to_melody(altline, melody)
     tenorline = convert_fit_to_melody(tenorline, melody)
     bassline = convert_fit_to_melody(bassline, melody)
-    abjad_wrapper.voices_to_staff(melody, altline, tenorline, bassline, tonality)
+
+    arranged = arrangement(melody, altline, tenorline, bassline)
+
+    dropdowns = [{'id': 'dropdown1', 'chords': ['F-Major', 'D-Minor'], 'selected': 'F-Major'},
+             {'id': 'dropdown2', 'chords': ['F', 'Dm'], 'selected': 'F'},
+             {'id': 'dropdown3', 'chords': ['F', 'Bb', 'Dm'], 'selected': 'F'},
+             {'id': 'dropdown4', 'chords': ['Bb', 'Dm'], 'selected': 'Bb'},
+             {'id': 'dropdown5', 'chords': ['F', 'C'], 'selected': 'F'},
+             {'id': 'dropdown6', 'chords': ['Bb', 'Gm'], 'selected': 'Bb'},
+             {'id': 'dropdown7', 'chords': ['F', 'Dm'], 'selected': 'F'},
+             {'id': 'dropdown8', 'chords': ['C', 'Gm'], 'selected': 'C'}]
+
+    return arranged, dropdowns

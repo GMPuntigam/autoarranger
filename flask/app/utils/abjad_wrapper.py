@@ -1,10 +1,7 @@
 import abjad
 import re
-# string = "a'4 f' a' a' bf' d'' bf' a'"
-# voice_1 = abjad.Voice(string, name="Voice_1")
-# staff_1 = abjad.Staff([voice_1], name="Staff_1")
-# abjad.show(staff_1)
-
+import os
+from app.utils.svg_utils import crop_svg, get_notepositions
 
 def uniform_pitch_to_case_pitch(pitch_str):
     pitch_letter = " ".join(re.findall("[a-zA-Z]+", pitch_str))
@@ -30,12 +27,12 @@ def generate_abjad_string(voice):
 
 
 
-def voices_to_staff(melody, altline, tenorline, bassline, tonality):
-    sop_string = generate_abjad_string(melody)
+def voices_to_staff(arrangement, tonality, save_render_path):
+    sop_string = generate_abjad_string(arrangement.soprano)
     voice_sop = abjad.Voice(sop_string, name="Soprano")
-    voice_alt = abjad.Voice(generate_abjad_string(altline), name="Alt")
-    voice_ten = abjad.Voice(generate_abjad_string(tenorline), name="Tenor")
-    voice_bas = abjad.Voice(generate_abjad_string(bassline), name="Bass")
+    voice_alt = abjad.Voice(generate_abjad_string(arrangement.alt), name="Alt")
+    voice_ten = abjad.Voice(generate_abjad_string(arrangement.tenor), name="Tenor")
+    voice_bas = abjad.Voice(generate_abjad_string(arrangement.bass), name="Bass")
     rh_staff = abjad.Staff([voice_sop, voice_alt], name="Treble Clef", simultaneous=True)
     lh_staff = abjad.Staff([voice_ten, voice_bas], name="LH_Voice", simultaneous=True)
     literal = abjad.LilyPondLiteral(r"\voiceOne")
@@ -62,4 +59,31 @@ def voices_to_staff(melody, altline, tenorline, bassline, tonality):
     note = abjad.select.note(lh_staff, 0)
     abjad.attach(key_signature, note)
     abjad.attach(clef, leaf)
-    abjad.show(score)
+    # abjad.show(score)
+    savepath_temp = os.path.join('generated',save_render_path + '.svg')
+    savepath_final = os.path.join('flask', 'static', 'generated_svg',save_render_path + '.svg')
+    filepath = abjad.persist.as_svg(score, savepath_temp)
+    dir_name = os.path.dirname(savepath_temp)
+    test = os.listdir(dir_name)
+
+    for item in test:
+        if item.endswith(".ly"):
+            os.remove(os.path.join(dir_name, item))
+
+    with open(savepath_temp, 'r') as f:
+        contents = f.read()
+    with open(savepath_temp, 'w') as f:
+        re_pattern = r'<g(?<=<g).+?(?=<\/g>)<\/g>'
+        g_tags = re.findall(re_pattern, contents, flags=re.DOTALL)
+        new_contents = contents
+        for tag_str in g_tags:
+            if 'lilypond' in tag_str:
+                new_contents = new_contents.replace(tag_str, '')
+        f.write(new_contents)
+
+    crop_svg(savepath_temp, savepath_final)
+    
+    os.remove(savepath_temp)
+    note_positions = get_notepositions(savepath_final)
+    # print('SVG-File: {}, Positions: {}'.format(savepath_final, note_positions))
+    return note_positions
