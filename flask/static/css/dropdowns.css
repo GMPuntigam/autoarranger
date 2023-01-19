@@ -1,51 +1,40 @@
-div#dropdown1 {
-    left: 12.63%;
+div#dropdown1{
+    left: 5.00%;
     position: absolute;
     max-width: fit-content;
 }
-
-div#dropdown2 {
-    left: 25.08%;
+div#dropdown2{
+    left: 22.84%;
     position: absolute;
     max-width: fit-content;
-    margin: 0;
 }
-
-div#dropdown3 {
-    left: 36.21%;
+div#dropdown3{
+    left: 32.92%;
     position: absolute;
     max-width: fit-content;
-    margin: 0;
 }
-
-div#dropdown4 {
-    left: 47.40%;
+div#dropdown4{
+    left: 48.34%;
     position: absolute;
     max-width: fit-content;
-    margin: 0;
 }
-div#dropdown5 {
-    left: 58.12%;
+div#dropdown5{
+    left: 58.04%;
     position: absolute;
     max-width: fit-content;
-    margin: 0;
 }
-div#dropdown6 {
-    left: 69.03%;
+div#dropdown6{
+    left: 67.93%;
     position: absolute;
     max-width: fit-content;
-    margin: 0;
 }
-div#dropdown7 {
-    left: 77.12%;
+div#dropdown7{
+    left: 75.27%;
     position: absolute;
     max-width: fit-content;
-    margin: 0;
 }
-
-div#dropdown8 {
-    left: 91.88%;
+div#dropdown8{
+    left: 92.64%;
     position: relative;
     max-width: fit-content;
-    margin: 0;
 }

@@ -2,6 +2,7 @@ import abjad
 import re
 import os
 from app.utils.svg_utils import crop_svg, get_notepositions
+import time
 
 def uniform_pitch_to_case_pitch(pitch_str):
     pitch_letter = " ".join(re.findall("[a-zA-Z]+", pitch_str))
@@ -65,7 +66,7 @@ def voices_to_staff(arrangement, tonality, save_render_path):
     filepath = abjad.persist.as_svg(score, savepath_temp)
     dir_name = os.path.dirname(savepath_temp)
     test = os.listdir(dir_name)
-
+    time.sleep(0.5)
     for item in test:
         if item.endswith(".ly"):
             os.remove(os.path.join(dir_name, item))

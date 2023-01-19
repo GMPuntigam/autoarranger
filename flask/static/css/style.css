@@ -18,3 +18,8 @@ div.svgcontainer {
     
 }
 
+div#player {
+    display: flex;
+    justify-content: center;
+    margin: auto;
+}

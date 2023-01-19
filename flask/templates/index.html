@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    
+    <script src="https://cdn.jsdelivr.net/combine/npm/tone@14.7.58,npm/@magenta/music@1.23.1/es6/core.js,npm/focus-visible@5,npm/html-midi-player@1.5.0"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dropdowns.css') }}">
     <meta charset="UTF-8">
@@ -12,7 +12,7 @@
 <form method="POST">
     <div id='editor'>
         <div class="svgcontainer">
-            <img src = "static\generated_svg\sample1.svg" alt="My Happy SVG" class="svg"/>
+            <img src = "{{ svg }}" alt="My Happy SVG" class="svg"/>
         </div>
         <div id="dropdowns">
             {% for dropdown in dropdowns %}
@@ -29,7 +29,15 @@
             </div>
             {% endfor %}
         </div>
+        
     </div>
 </form>
+<div id = 'player'>
+    <midi-player
+    src="{{ audio_path }}"
+    sound-font visualizer="#myVisualizer">
+    </midi-player>
+</div>
+
 </body>
 </html>

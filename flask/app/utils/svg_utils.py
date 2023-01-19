@@ -28,6 +28,9 @@ def get_notepositions(svg_file):
     x, y, width, height = [float(pos) for pos in svg_root.getAttribute("viewBox").split(' ')]
     note_positions = [(position-x)/width*100 for position in note_positions]
     note_positions.sort()
+
+    key_signature_position = 5
+    note_positions = [key_signature_position] + note_positions
     return note_positions
 
 
