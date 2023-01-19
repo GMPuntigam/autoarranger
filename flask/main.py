@@ -13,7 +13,8 @@ test_melodies = {
     'sample1' : [tone('A5', 4), tone('F5', 2), tone('D6', 4), tone('C6', 2), tone('Bb5', 4), tone('A5', 2), tone('G5', 4)],
     'sample2' : [tone('C6', 2), tone('Bb5', 4), tone('A5', 4), tone('G5', 2),  tone('C5', 2), tone('D5', 4), tone('E5', 4), tone('F5', 4), tone('A5', 4), tone('G5', 2), tone('G5', 2), tone('F5', 1)],
     'sample3' : [tone('A5', 4), tone('Bb5', 4), tone('A5', 4), tone('G5', 4), tone('F5', 2), tone('E5', 2), tone('F5', 1)],
-    'sample4' : [tone('F5', 4), tone('A5', 4), tone('C6', 2), tone('D6', 4), tone('C6', 4), tone('Bb5', 2), tone('A5', 2), tone('G5', 1)]
+    'sample4' : [tone('F5', 4), tone('A5', 4), tone('C6', 2), tone('D6', 4), tone('C6', 4), tone('Bb5', 2), tone('A5', 2), tone('G5', 1)],
+    'sample5' : [tone('D6', 2), tone('C6', 4), tone('B5', 4), tone('A5', 2),  tone('D5', 2), tone('E5', 4), tone('F#5', 4), tone('G5', 4), tone('B5', 4), tone('A5', 2), tone('A5', 2), tone('G5', 1)],
 
 }
 # arrangement_from_melody(melody1, "sample1")
@@ -32,7 +33,7 @@ def change_dropdown_selection(dropdowns, selections):
 @webapp.route('/', methods=['POST', 'GET'])
 def dropdown():
     #initial state
-    samplename =  "sample1"
+    samplename =  "sample5"
     svg_path = 'static\generated_svg\{}.svg'.format(samplename)
     audio_path = r'static\audio\{}.mid'.format(samplename)
     melody = test_melodies[samplename]
@@ -40,7 +41,7 @@ def dropdown():
         # generate initially
         global dropdowns
         arrangement =  arrangement_from_melody(melody, samplename)
-        dropdowns = get_dropdowns(melody)
+        dropdowns = get_dropdowns(melody, arrangement.possible_keys)
         # sometimes generation is too slow, maybe wait
         note_positions = voices_to_staff(arrangement, dropdowns[0]['selected'], samplename)
         css_path = os.path.join('flask','static', 'css', 'dropdowns.css')
@@ -59,8 +60,10 @@ def dropdown():
             new_selections[i] = select
         
     if selections != new_selections:
-        arrangement = arrangement_from_melody(melody, samplename, selected_chords = new_selections[1:])
-        note_positions = voices_to_staff(arrangement, dropdowns[0]['selected'], samplename)
+        arrangement = arrangement_from_melody(melody, samplename, selected_chords = new_selections[1:], selected_key = new_selections[0])
+        if new_selections[0] != selections[0]:
+            dropdowns = get_dropdowns(melody, arrangement.possible_keys, new_selections[0])
+        note_positions = voices_to_staff(arrangement, new_selections[0], samplename)
         css_path = os.path.join('flask','static', 'css', 'dropdowns.css')
         generate_css(note_positions, os.path.abspath(css_path))
         selections = new_selections

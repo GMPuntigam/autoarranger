@@ -5,7 +5,7 @@ from app.utils.svg_utils import crop_svg, get_notepositions
 import time
 
 def uniform_pitch_to_case_pitch(pitch_str):
-    pitch_letter = " ".join(re.findall("[a-zA-Z]+", pitch_str))
+    pitch_letter = " ".join(re.findall("[a-zA-Z#]+", pitch_str))
     pitch_letter = pitch_letter.replace('b', 'f')
     pitch_letter = pitch_letter.replace('#', 's')
     pitch_letter = pitch_letter.lower() 

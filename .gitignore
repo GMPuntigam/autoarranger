@@ -1,2 +1,5 @@
 new_song.mid
 __pycache__
+flask/static/css/dropdowns.css
+flask/static/audio/*
+flask/static/generated_svg/*
